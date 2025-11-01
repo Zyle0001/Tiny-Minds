@@ -1,0 +1,17 @@
+seed: 42
+embed_dim: 256
+context:
+  hidden: 512
+  window: 5
+memory:
+  top_k: 5
+  write_thresholds:
+    novelty: 0.7
+    curiosity: 0.6
+curiosity:
+  weights:
+    novelty: 0.6
+    entropy: 0.3
+    drift: 0.1
+ethics:
+  risk_threshold: 0.5
