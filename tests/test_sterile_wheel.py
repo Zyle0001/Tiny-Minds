@@ -6,6 +6,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,19 @@ def run(command: list[str], *, cwd: Path, env: dict[str, str], timeout: int = 18
             f"Command failed ({completed.returncode}): {command}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         )
     return completed
+
+
+def wait_for_port(port: int, process: subprocess.Popen, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise AssertionError(f"Fake provider exited during startup with code {process.returncode}")
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                return
+        except OSError:
+            time.sleep(0.1)
+    raise AssertionError(f"Fake provider did not accept connections on port {port} within {timeout}s")
 
 
 @pytest.mark.sterile
@@ -149,13 +163,14 @@ def test_separate_http_provider_extension_without_foundry(tmp_path: Path) -> Non
         cwd=sterile, env=sterile_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
+        wait_for_port(port, server)
         config = sterile / "config.yaml"
         config.write_text(f"""schema_version: 1
 providers:
-  - {{id: embeddings, kind: embeddings, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
-  - {{id: reranker, kind: reranker, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
-  - {{id: nli, kind: nli, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
-  - {{id: classification, kind: classification, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
+  - {{id: embeddings, kind: embeddings, implementation: example-http, endpoint: 'http://127.0.0.1:{port}', timeout_seconds: 5}}
+  - {{id: reranker, kind: reranker, implementation: example-http, endpoint: 'http://127.0.0.1:{port}', timeout_seconds: 5}}
+  - {{id: nli, kind: nli, implementation: example-http, endpoint: 'http://127.0.0.1:{port}', timeout_seconds: 5}}
+  - {{id: classification, kind: classification, implementation: example-http, endpoint: 'http://127.0.0.1:{port}', timeout_seconds: 5}}
 """, encoding="utf-8")
         manifest = sterile / "retrieve.yaml"
         manifest.write_text("""schema_version: 1
@@ -167,17 +182,11 @@ nodes:
 """, encoding="utf-8")
         request = sterile / "input.json"
         request.write_text('{"query":"alpha","documents":[{"path":"a","text":"alpha memory"},{"path":"b","text":"beta music"}]}', encoding="utf-8")
-        completed = None
-        for _ in range(20):
-            completed = subprocess.run(
-                [str(executable), "run", str(manifest), "--config", str(config), "--input", str(request), "--no-write", "--json"],
-                cwd=sterile, env=sterile_env, capture_output=True, text=True, check=False, timeout=30,
-            )
-            if completed.returncode == 0:
-                break
-            import time
-            time.sleep(0.1)
-        assert completed is not None and completed.returncode == 0, completed.stderr
+        completed = subprocess.run(
+            [str(executable), "run", str(manifest), "--config", str(config), "--input", str(request), "--no-write", "--json"],
+            cwd=sterile, env=sterile_env, capture_output=True, text=True, check=False, timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
         payload = json.loads(completed.stdout)
         assert payload["primitives"]["retrieve"]["data"]["results"][0]["path"] == "a"
         probe_code = (
