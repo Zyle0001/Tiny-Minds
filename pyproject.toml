@@ -10,14 +10,14 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "numpy>=1.24",
-    "psutil>=5.9",
     "pydantic>=2.7,<3",
     "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+foundry = ["psutil>=5.9"]
+workspace-memory = ["numpy>=1.24"]
+dev = ["numpy>=1.24", "psutil>=5.9", "pytest>=8.0"]
 
 [project.scripts]
 tiny-minds = "tiny_minds.cli:main"
@@ -27,3 +27,4 @@ include = ["tiny_minds*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["sterile: builds and installs the base wheel into a fresh isolated environment"]

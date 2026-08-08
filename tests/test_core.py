@@ -112,3 +112,24 @@ def test_application_service_accepts_objects_without_subprocess(tmp_path: Path) 
     payload = json.loads(result.model_dump_json())
     assert payload["pipeline"] == {"id": "test", "version": "1"}
     assert payload["status"] == "success"
+
+
+def test_core_deterministic_primitives_and_absent_provider(tmp_path: Path) -> None:
+    portable = manifest([
+        {"id": "hash", "capability": "core.hash.sha256", "config": {"input_key": "value"}},
+        {"id": "structure", "capability": "core.structure.validate-mapping",
+         "config": {"input_key": "document", "required": ["id", "kind"]}},
+        {"id": "provider", "capability": "core.provider.invoke", "required": False,
+         "config": {"provider": "embeddings", "operation": "embed"}},
+    ])
+    result = execute_pipeline(
+        portable,
+        {"schema_version": 1, "inputs": {"value": "portable", "document": {"id": 1, "kind": "test"}}},
+        tmp_path,
+    )
+    assert result.status == "partial"
+    assert result.primitives["hash"].status == "success"
+    assert len(result.primitives["hash"].data["digest"]) == 64
+    assert result.primitives["structure"].data["valid"] is True
+    assert result.primitives["provider"].status == "unavailable"
+    assert "not configured" in result.primitives["provider"].diagnostics[0]

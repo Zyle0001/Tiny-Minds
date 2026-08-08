@@ -9,6 +9,7 @@ from typing import Any
 
 from .contracts import PipelineIdentity, PipelineResult, PrimitiveMetrics, PrimitiveResult, Provenance, RunRequest
 from .manifest import Condition, PipelineManifest
+from .providers import ProviderRegistry
 from .registry import CapabilityRegistry
 
 
@@ -27,6 +28,7 @@ class ExecutionContext:
     workspace: Path
     request: RunRequest
     manifest: PipelineManifest
+    providers: ProviderRegistry
     state: dict[str, Any] = field(default_factory=dict)
 
 
@@ -74,8 +76,9 @@ def _topological_nodes(manifest: PipelineManifest):
 
 
 class PipelineApplication:
-    def __init__(self, registry: CapabilityRegistry) -> None:
+    def __init__(self, registry: CapabilityRegistry, providers: ProviderRegistry | None = None) -> None:
         self.registry = registry
+        self.providers = providers or ProviderRegistry()
 
     def run(self, manifest: PipelineManifest, request: RunRequest, workspace: Path) -> PipelineResult:
         unknown = sorted({node.capability for node in manifest.nodes} - set(self.registry.capabilities()))
@@ -83,7 +86,7 @@ class PipelineApplication:
             raise ValueError(f"Manifest references unregistered capabilities: {unknown}")
         started = time.perf_counter()
         deadline = started + manifest.budgets.timeout_seconds
-        context = ExecutionContext(workspace.resolve(), request, manifest)
+        context = ExecutionContext(workspace.resolve(), request, manifest, self.providers)
         results: dict[str, PrimitiveResult] = {}
         diagnostics: list[str] = []
         partial = False

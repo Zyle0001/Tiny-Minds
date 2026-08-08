@@ -46,6 +46,7 @@ class PipelineManifest(ContractModel):
     schema_version: int
     id: str
     version: str
+    integrations: list[Literal["workspace-memory"]] = Field(default_factory=list)
     nodes: list[PipelineNode]
     routing: list[RoutingRule] = Field(default_factory=list)
     default_disposition: Literal["resolved", "review", "escalate"] = "resolved"

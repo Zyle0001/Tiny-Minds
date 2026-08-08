@@ -8,10 +8,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .application import build_registry, execute_pipeline
+from .application import build_integration_providers, build_registry, execute_pipeline
 from .contracts import RunRequest
 from .engine import PipelineExecutionError
-from .services import FoundryManager, FoundryServiceError
+from .manifest import load_manifest
 from .telemetry import append_telemetry
 
 
@@ -49,10 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     capabilities = subparsers.add_parser("capabilities")
+    capabilities.add_argument("--integration", action="append", choices=("workspace-memory",), default=[])
     capabilities.add_argument("--json", action="store_true")
 
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--workspace")
+    doctor.add_argument("--integration", action="append", choices=("workspace-memory",), default=[])
     doctor.add_argument("--json", action="store_true")
 
     run = subparsers.add_parser("run")
@@ -80,42 +82,64 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "capabilities":
-            _emit({"schema_version": 1, "capabilities": build_registry().capabilities()})
-            return 0
-        if args.command == "doctor":
-            workspace = _workspace(args.workspace)
-            model = workspace / "Tools" / "foundry-local-runtime" / "ONNX host service" / "models" / "all-MiniLM-L6-v2" / "adapter.json"
-            foundry_repo = workspace / "Tools" / "foundry-local-runtime"
-            foundry_python = any(path.exists() for path in (
-                foundry_repo / "ONNX host service" / "env" / "Scripts" / "python.exe",
-                foundry_repo / ".venv" / "Scripts" / "python.exe",
-                foundry_repo / ".venv" / "bin" / "python",
-            ))
-            manifests = workspace / "Cognition" / "pipelines"
-            status = FoundryManager(workspace).status()
-            checks = {
-                "workspace": workspace.is_dir(),
-                "pipeline_directory": manifests.is_dir(),
-                "minilm_installed": model.is_file(),
-                "foundry_installed": foundry_python,
-            }
             _emit({
                 "schema_version": 1,
-                "status": "healthy" if all(checks.values()) else "degraded",
-                "checks": checks,
-                "runtime": {"foundry_running": bool(status.get("healthy"))},
-                "foundry": status,
+                "runtime": "tiny-minds-core",
+                "integrations": args.integration,
+                "capabilities": build_registry(args.integration).capabilities(),
             })
-            return 0 if all(checks.values()) else 2
+            return 0
+        if args.command == "doctor":
+            checks = {
+                "python_supported": sys.version_info >= (3, 10),
+                "core_registry": bool(build_registry().capabilities()),
+            }
+            integrations: dict[str, Any] = {}
+            if "workspace-memory" in args.integration:
+                workspace = _workspace(args.workspace)
+                model = workspace / "Tools" / "foundry-local-runtime" / "ONNX host service" / "models" / "all-MiniLM-L6-v2" / "adapter.json"
+                foundry_repo = workspace / "Tools" / "foundry-local-runtime"
+                foundry_python = any(path.exists() for path in (
+                    foundry_repo / "ONNX host service" / "env" / "Scripts" / "python.exe",
+                    foundry_repo / ".venv" / "Scripts" / "python.exe",
+                    foundry_repo / ".venv" / "bin" / "python",
+                ))
+                integrations["workspace-memory"] = {
+                    "status": "ready" if foundry_python and model.is_file() else "degraded",
+                    "workspace": workspace.is_dir(),
+                    "pipeline_directory": (workspace / "Cognition" / "pipelines").is_dir(),
+                    "embedding_provider": {
+                        "configured": foundry_python,
+                        "model_installed": model.is_file(),
+                        "provider": "foundry",
+                    },
+                }
+            healthy = all(checks.values()) and all(
+                item.get("status") == "ready" for item in integrations.values()
+            )
+            _emit({
+                "schema_version": 1,
+                "runtime": "tiny-minds-core",
+                "status": "healthy" if healthy else "degraded",
+                "checks": checks,
+                "providers": [],
+                "integrations": integrations,
+            })
+            return 0 if healthy else 2
         if args.command == "service":
             workspace = _workspace(args.workspace)
-            manager = FoundryManager(workspace, record_telemetry=True)
-            operation = {"status": manager.status, "ensure": manager.ensure, "stop": manager.stop}[args.action]
-            payload = operation(args.port) if args.action != "stop" else operation()
+            try:
+                from .services import FoundryManager, FoundryServiceError
+                manager = FoundryManager(workspace, record_telemetry=True)
+                operation = {"status": manager.status, "ensure": manager.ensure, "stop": manager.stop}[args.action]
+                payload = operation(args.port) if args.action != "stop" else operation()
+            except (ImportError, FoundryServiceError) as exc:
+                raise PipelineExecutionError(f"Optional Foundry integration is unavailable: {exc}") from exc
             _emit(payload)
             return 0 if payload.get("healthy", True) else 2
         if args.command == "run":
             workspace = _workspace(args.workspace)
+            manifest = load_manifest(_manifest(workspace, args.pipeline))
             payload = _request_payload(args.input)
             if any(key in payload for key in ("schema_version", "inputs", "constraints", "debug")):
                 request = RunRequest.model_validate(payload)
@@ -125,8 +149,11 @@ def main(argv: list[str] | None = None) -> int:
                 request = RunRequest(inputs=payload, debug=args.debug)
             if args.no_write:
                 request.inputs["no_write"] = True
-            result = execute_pipeline(_manifest(workspace, args.pipeline), request, workspace)
-            if not args.no_write:
+            providers = build_integration_providers(
+                manifest.integrations, workspace, record_telemetry=not args.no_write
+            )
+            result = execute_pipeline(manifest, request, workspace, providers)
+            if not args.no_write and "workspace-memory" in manifest.integrations:
                 try:
                     append_telemetry(workspace, result)
                 except OSError as exc:
@@ -136,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValidationError, ValueError, json.JSONDecodeError, OSError) as exc:
         _emit({"schema_version": 1, "status": "error", "error_type": "invalid-request", "message": str(exc)})
         return 3
-    except (PipelineExecutionError, FoundryServiceError) as exc:
+    except PipelineExecutionError as exc:
         _emit({"schema_version": 1, "status": "error", "error_type": "execution-failure", "message": str(exc)})
         return 4
     return 4

@@ -12,7 +12,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-import psutil
+try:
+    import psutil
+except ModuleNotFoundError:  # Optional `foundry` extra is deliberately absent from the base wheel.
+    psutil = None
 
 
 class FoundryServiceError(RuntimeError):
@@ -80,6 +83,8 @@ class FoundryManager:
 
     @staticmethod
     def _process_matches(state: dict[str, Any]) -> bool:
+        if psutil is None:
+            return False
         if not state.get("managed"):
             return False
         try:
@@ -103,6 +108,8 @@ class FoundryManager:
         if current.get("healthy"):
             self._record("reuse", current)
             return current
+        if psutil is None:
+            raise FoundryServiceError("Process management requires the optional 'foundry' extra")
 
         repo = self.workspace / "Tools" / "foundry-local-runtime"
         python_candidates = [
@@ -177,6 +184,8 @@ class FoundryManager:
         state = self._read_state()
         if not state:
             return {"service": "foundry", "status": "not_managed"}
+        if psutil is None:
+            raise FoundryServiceError("Process management requires the optional 'foundry' extra")
         if not self._process_matches(state):
             raise FoundryServiceError("Refusing to stop Foundry because the recorded PID or command does not match")
         process = psutil.Process(int(state["pid"]))

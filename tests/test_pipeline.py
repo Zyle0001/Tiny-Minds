@@ -32,6 +32,7 @@ def memory_manifest() -> PipelineManifest:
         "schema_version": 1,
         "id": "memory-validation",
         "version": "1-test",
+        "integrations": ["workspace-memory"],
         "budgets": {"timeout_seconds": 30, "max_candidates": 100, "max_output_bytes": 500_000},
         "reports": {"events": "Reports/events.jsonl", "outstanding": "Reports/Outstanding.md"},
         "nodes": [

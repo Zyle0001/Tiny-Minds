@@ -22,7 +22,30 @@ def test_capabilities_stdout_is_one_json_document() -> None:
     assert completed.returncode == 0
     assert completed.stderr == ""
     assert payload["schema_version"] == 1
+    assert payload["runtime"] == "tiny-minds-core"
+    assert payload["capabilities"] == [
+        "core.hash.sha256", "core.provider.invoke", "core.structure.validate-mapping"
+    ]
+
+
+def test_workspace_capabilities_require_explicit_integration() -> None:
+    completed = run_cli("capabilities", "--integration", "workspace-memory", "--json")
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 0
     assert "workspace.memory.structural" in payload["capabilities"]
+
+
+def test_core_doctor_has_no_workspace_or_provider_requirement(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "tiny_minds.cli", "doctor", "--json"],
+        cwd=tmp_path, capture_output=True, text=True, check=False, timeout=20,
+        env={"PATH": str(Path(sys.executable).parent)},
+    )
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 0
+    assert payload["status"] == "healthy"
+    assert payload["providers"] == []
+    assert payload["integrations"] == {}
 
 
 def test_invalid_pipeline_has_contract_exit_code(tmp_path: Path) -> None:

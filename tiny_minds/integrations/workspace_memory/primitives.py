@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +8,7 @@ import numpy as np
 from ...contracts import EvidenceReference, PrimitiveMetrics, PrimitiveResult, Provenance
 from ...engine import CapabilityUnavailable, ExecutionContext
 from ...registry import CapabilityRegistry
-from ...services import FoundryManager, FoundryServiceError
+from ...providers import ProviderUnavailable
 from . import analysis, level1
 
 
@@ -108,15 +107,21 @@ class SemanticSimilarityPrimitive:
         chunks: list[analysis.Chunk] = context.state["chunks"]
         model_id = str(config.get("model_id", "all-MiniLM-L6-v2"))
         preferred_port = int(config.get("preferred_port", 8123))
-        adapter_path = context.workspace / "Tools" / "foundry-local-runtime" / "ONNX host service" / "models" / model_id / "adapter.json"
-        try:
-            adapter = json.loads(adapter_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        provider_id = str(config.get("provider", "embeddings"))
+        provider = context.providers.get(provider_id)
+        if provider is None:
             raise CapabilityUnavailable(
-                f"Embedding model '{model_id}' is not installed or has invalid metadata",
-                "Run pwsh -File Tools/foundry-local-runtime/scripts/Install-MiniLM.ps1",
+                f"Embedding provider '{provider_id}' is not configured",
+                "Configure an embedding provider, or keep semantic similarity optional",
+            )
+        try:
+            adapter = provider.invoke("describe", {"model_id": model_id})
+        except ProviderUnavailable as exc:
+            raise CapabilityUnavailable(
+                str(exc), exc.remediation,
             ) from exc
-        model_identity = json.dumps({
+        model_identity = __import__("json").dumps({
+            "provider": provider_id,
             "model": model_id,
             "revision": adapter.get("revision"),
             "sha256": adapter.get("model_sha256"),
@@ -134,17 +139,22 @@ class SemanticSimilarityPrimitive:
                     misses.append(index)
             service_info: dict[str, Any] = {}
             if misses:
-                manager = FoundryManager(context.workspace, record_telemetry=not bool(context.request.inputs.get("no_write", False)))
                 try:
                     for offset in range(0, len(misses), int(config.get("batch_size", 32))):
                         indexes = misses[offset:offset + int(config.get("batch_size", 32))]
-                        batch, service_info = manager.embed([chunks[index].text for index in indexes], model_id, preferred_port)
+                        response = provider.invoke("embed", {
+                            "model_id": model_id,
+                            "preferred_port": preferred_port,
+                            "texts": [chunks[index].text for index in indexes],
+                        })
+                        batch = response["vectors"]
+                        service_info = response.get("service", {})
                         for index, raw in zip(indexes, batch):
                             vector = np.asarray(raw, dtype=np.float32)
                             vectors[index] = vector
                             cache.put(cache.key(chunks[index], model_identity), vector)
-                except FoundryServiceError as exc:
-                    raise CapabilityUnavailable(str(exc), "Run tiny-minds doctor --json and inspect the Foundry service state") from exc
+                except ProviderUnavailable as exc:
+                    raise CapabilityUnavailable(str(exc), exc.remediation) from exc
             cooked = np.vstack([vector for vector in vectors if vector is not None])
             if len(cooked) != len(chunks):
                 raise CapabilityUnavailable("Not all section embeddings could be produced")
