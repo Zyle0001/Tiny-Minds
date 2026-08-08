@@ -1,10 +1,10 @@
 # Tiny Minds Status
 
-Last reviewed: 2026-08-08
+Last reviewed: 2026-08-09
 
 ## Current Position
 
-Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The generic capabilities are intentionally not bootstrap-published until the gates in `calibration/0.2.0/gates.yaml` have human-reviewed evidence.
+Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The rebuilt runtime is on GitHub, its public description and README reflect the current architecture, and `main` is green. Local release documentation and provisional artifacts are prepared; final artifacts must be rebuilt from the reviewed release commit before tagging. The generic capabilities are intentionally not bootstrap-published until their gates have human-reviewed evidence.
 
 ## Implemented and Verified
 
@@ -19,12 +19,14 @@ Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspa
 - Foundry adapters and endpoints for embeddings, pair reranking, NLI, and zero-shot classification.
 - Explicit pinned installers for MiniLM embeddings, MS MARCO MiniLM reranking, and MiniLM2 NLI; execution never downloads models.
 - Metadata-only telemetry, bounded excerpts, provider absence degradation, no-write behavior, and cache-hit accounting.
-- Cross-platform CI definition for Python 3.10 and 3.13 on Windows, Linux, and macOS.
+- Cross-platform CI for Python 3.10 and 3.13 on Windows, Linux, and macOS, with matrix fail-fast disabled so every platform reports independently.
 
 ## Verification Baseline
 
 - Tiny Minds: 63 normal tests passed, 2 sterile tests skipped by default.
 - Sterile acceptance: 2/2 passed when explicitly enabled.
+- Hosted CI: all six Windows, Ubuntu, and macOS jobs passed at commit `07d03b0`; every job ran both the normal and sterile suites.
+- Provisional release build: core and example-provider wheels and source distributions built successfully, SHA-256 records generated, and the exact wheels passed a local no-network install, import, doctor, provider-discovery, and capability-discovery smoke test.
 - Foundry Local Runtime: 5/5 tests passed.
 - Existing workspace-memory identities and behavior remain covered by the unchanged regression suite.
 
@@ -38,11 +40,15 @@ The seed fixtures are synthetic and are not a substitute for the plan's human-re
 - no token-saving claim is made;
 - the pinned models are installed and live-smoked locally, but the model-backed calibration datasets still require human review.
 
-## Recommended Path
+## Immediate Next Steps
 
-1. Human-review and expand the seed fixtures, especially ambiguous and adversarial cases.
-2. Run the expanded fixtures through cold, warm, missing-provider, and malformed-provider audits.
-3. Record retrieval, duplicate, classification, claim-review, lyric, and issue-triage metrics against the gates.
-4. Publish only passing capabilities in `Cognition/Cognition.md` and wire only their consuming skills.
-5. Exercise the checked-in CI workflow on hosted Windows, Linux, and macOS runners.
-6. Advance releases through the planned pre-1.0 sequence; reserve `1.0.0` for fully calibrated external adoption.
+1. Rebuild the `v0.2.0` artifacts from the clean release commit and install them in a clean environment; repeat doctor, discovery, deterministic execution, external-provider execution, and provider-absence checks.
+2. Replace the deprecated Node-targeting GitHub Actions revisions as routine workflow maintenance.
+3. Tag `v0.2.0` and publish the artifacts through a GitHub Release. PyPI publication is optional for this preview.
+4. Begin the deterministic Phase 1 gate defined in [`docs/phase-1-requirements.md`](docs/phase-1-requirements.md).
+
+## Phase 1 Summary
+
+Phase 1 covers only `workspace.validate-scoped-delta`, `workspace.change-packet`, and `repo.preflight`. They are implemented enough for synthetic tests, but they are not yet complete enough to become workspace policy. Required work includes stable finding identities, fuller Git-state coverage, bounded relationship/test/document evidence, publication-hazard probes, human-reviewed fixtures, and proof of zero caller-owned writes.
+
+Passing Phase 1 is the prerequisite for publishing those capabilities in workspace discovery, adding them to consuming skills, and releasing `0.3.0`. Model-backed calibration begins afterward.

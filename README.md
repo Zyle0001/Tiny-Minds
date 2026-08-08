@@ -25,6 +25,8 @@ Ten more capabilities are implemented, but deliberately remain experimental unti
 
 That distinction matters. Implemented means the machinery runs. Published means there is enough evidence to let agents rely on it. See [STATUS.md](STATUS.md) and [`calibration/`](calibration/) for the current boundary.
 
+The next calibration target is the deterministic safety set. Its scope and release gate are documented in [`docs/phase-1-requirements.md`](docs/phase-1-requirements.md).
+
 The CI matrix builds and tests the wheel on Windows, Linux, and macOS with Python 3.10 and 3.13. Its sterile tests install the core and an external provider into a fresh environment with no Foundry, Agentic Workspace, NumPy, `psutil`, or fixed directory layout.
 
 ## Take it for a spin

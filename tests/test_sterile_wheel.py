@@ -34,7 +34,9 @@ def test_base_wheel_functions_without_workspace_or_foundry(tmp_path: Path) -> No
     shutil.copytree(
         repo,
         source,
-        ignore=shutil.ignore_patterns(".git", ".venv", ".pytest_cache", "__pycache__", "*.egg-info", "build"),
+        ignore=shutil.ignore_patterns(
+            ".git", ".venv", ".pytest_cache", "__pycache__", "*.egg-info", "build", "dist"
+        ),
     )
     wheelhouse = tmp_path / "wheelhouse"
     wheelhouse.mkdir()
