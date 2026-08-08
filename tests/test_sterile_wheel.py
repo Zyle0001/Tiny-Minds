@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import shutil
-import socket
 import subprocess
 import sys
-import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -24,26 +24,6 @@ def run(command: list[str], *, cwd: Path, env: dict[str, str], timeout: int = 18
             f"Command failed ({completed.returncode}): {command}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         )
     return completed
-
-
-def wait_for_port(port: int, process: subprocess.Popen, timeout: float = 10.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            _, stderr = process.communicate(timeout=1)
-            raise AssertionError(
-                f"Fake provider exited during startup with code {process.returncode}: {stderr.strip()}"
-            )
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-                return
-        except OSError:
-            time.sleep(0.1)
-    process.terminate()
-    _, stderr = process.communicate(timeout=5)
-    raise AssertionError(
-        f"Fake provider did not accept connections on port {port} within {timeout}s: {stderr.strip()}"
-    )
 
 
 @pytest.mark.sterile
@@ -162,16 +142,14 @@ def test_separate_http_provider_extension_without_foundry(tmp_path: Path) -> Non
     run([str(python), "-m", "pip", "install", str(core_wheel)], cwd=sterile, env=env)
     run([str(python), "-m", "pip", "install", "--no-deps", str(provider_wheel)], cwd=sterile, env=env)
     sterile_env = {key: value for key, value in env.items() if "FOUNDRY" not in key.upper() and "AGENTIC" not in key.upper() and not key.upper().startswith("TINY_MINDS")}
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    server = subprocess.Popen(
-        [sys.executable, str(repo / "examples" / "http-provider" / "tiny_minds_example_http" / "fake_server.py"),
-         "--port", str(port)],
-        cwd=sterile, env=sterile_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+    host_module = runpy.run_path(
+        str(repo / "examples" / "http-provider" / "tiny_minds_example_http" / "fake_server.py")
     )
+    server = host_module["ThreadingHTTPServer"](("127.0.0.1", 0), host_module["Handler"])
+    port = server.server_address[1]
+    host_thread = threading.Thread(target=server.serve_forever, name="tiny-minds-fake-http", daemon=True)
+    host_thread.start()
     try:
-        wait_for_port(port, server)
         config = sterile / "config.yaml"
         config.write_text(f"""schema_version: 1
 providers:
@@ -208,6 +186,7 @@ nodes:
         assert not (sterile / "Tools").exists()
         assert "FOUNDRY" not in " ".join(sterile_env).upper()
     finally:
-        if server.poll() is None:
-            server.terminate()
-            server.wait(timeout=10)
+        server.shutdown()
+        server.server_close()
+        host_thread.join(timeout=5)
+        assert not host_thread.is_alive()
