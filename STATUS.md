@@ -4,7 +4,7 @@ Last reviewed: 2026-08-09
 
 ## Current Position
 
-Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The rebuilt runtime is on GitHub, its public description and README reflect the current architecture, and `main` is green. Local release documentation and provisional artifacts are prepared; final artifacts must be rebuilt from the reviewed release commit before tagging. The generic capabilities are intentionally not bootstrap-published until their gates have human-reviewed evidence.
+Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The rebuilt runtime is on GitHub, its public description and README reflect the current architecture, and the hosted test matrix is green. Release documentation is committed, exact-artifact acceptance has passed in a clean environment, and CI uses the current Node 24 action majors. The final release candidate is rebuilt from the maintenance commit before tagging. The generic capabilities are intentionally not bootstrap-published until their gates have human-reviewed evidence.
 
 ## Implemented and Verified
 
@@ -27,6 +27,8 @@ Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspa
 - Sterile acceptance: 2/2 passed when explicitly enabled.
 - Hosted CI: all six Windows, Ubuntu, and macOS jobs passed at commit `07d03b0`; every job ran both the normal and sterile suites.
 - Provisional release build: core and example-provider wheels and source distributions built successfully, SHA-256 records generated, and the exact wheels passed a local no-network install, import, doctor, provider-discovery, and capability-discovery smoke test.
+- Clean artifact acceptance: the exact core and example-provider wheels installed as `0.2.0` under Python 3.13 with no NumPy, `psutil`, Foundry, or workspace coupling; doctor, discovery, deterministic execution, provider-absence degradation, and live external-provider execution all passed.
+- CI actions: `actions/checkout@v7` and `actions/setup-python@v7`, both on Node 24, with the workflow token restricted to `contents: read`.
 - Foundry Local Runtime: 5/5 tests passed.
 - Existing workspace-memory identities and behavior remain covered by the unchanged regression suite.
 
@@ -42,10 +44,8 @@ The seed fixtures are synthetic and are not a substitute for the plan's human-re
 
 ## Immediate Next Steps
 
-1. Rebuild the `v0.2.0` artifacts from the clean release commit and install them in a clean environment; repeat doctor, discovery, deterministic execution, external-provider execution, and provider-absence checks.
-2. Replace the deprecated Node-targeting GitHub Actions revisions as routine workflow maintenance.
-3. Tag `v0.2.0` and publish the artifacts through a GitHub Release. PyPI publication is optional for this preview.
-4. Begin the deterministic Phase 1 gate defined in [`docs/phase-1-requirements.md`](docs/phase-1-requirements.md).
+1. Tag `v0.2.0` and publish the verified artifacts through a GitHub Release. PyPI publication is optional for this preview.
+2. Begin the deterministic Phase 1 gate defined in [`docs/phase-1-requirements.md`](docs/phase-1-requirements.md).
 
 ## Phase 1 Summary
 
