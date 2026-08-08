@@ -4,6 +4,8 @@ Tiny Minds is a portable cognitive-machinery runtime. It replaces broad LLM call
 
 Tiny Minds does not call frontier models. A pipeline returns `resolved`, `review`, or `escalate` with bounded evidence so the host agent can decide whether expensive reasoning is necessary.
 
+Current maturity: the base wheel is portable and verified, but third-party provider discovery and config-only arbitrary-workspace adoption are not yet implemented. See [STATUS.md](STATUS.md) for the evidence, limitations, and recommended path.
+
 ## Portable Core
 
 The base wheel has no Foundry, `psutil`, NumPy, Agentic Workspace, or fixed filesystem-layout requirement. It provides versioned contracts, DAG execution, deterministic primitives, routing, and an explicit provider registry. An empty provider registry is valid.
