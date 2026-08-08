@@ -46,7 +46,7 @@ class PipelineManifest(ContractModel):
     schema_version: int
     id: str
     version: str
-    integrations: list[Literal["workspace-memory"]] = Field(default_factory=list)
+    integrations: list[str] = Field(default_factory=list)
     nodes: list[PipelineNode]
     routing: list[RoutingRule] = Field(default_factory=list)
     default_disposition: Literal["resolved", "review", "escalate"] = "resolved"
@@ -57,6 +57,10 @@ class PipelineManifest(ContractModel):
     def validate_graph(self) -> "PipelineManifest":
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(f"Unsupported manifest schema_version {self.schema_version}")
+        if any(not item or not item.replace("-", "").replace("_", "").isalnum() for item in self.integrations):
+            raise ValueError("Integration IDs may contain only letters, numbers, hyphens, and underscores")
+        if len(self.integrations) != len(set(self.integrations)):
+            raise ValueError("Pipeline integrations must be unique")
         ids = [node.id for node in self.nodes]
         if len(ids) != len(set(ids)):
             raise ValueError("Pipeline node IDs must be unique")

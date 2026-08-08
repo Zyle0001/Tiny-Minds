@@ -23,9 +23,7 @@ def test_capabilities_stdout_is_one_json_document() -> None:
     assert completed.stderr == ""
     assert payload["schema_version"] == 1
     assert payload["runtime"] == "tiny-minds-core"
-    assert payload["capabilities"] == [
-        "core.hash.sha256", "core.provider.invoke", "core.structure.validate-mapping"
-    ]
+    assert payload["capabilities"] == ["core.hash.sha256", "core.structure.validate-mapping"]
 
 
 def test_workspace_capabilities_require_explicit_integration() -> None:

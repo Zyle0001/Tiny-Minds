@@ -1,0 +1,23 @@
+schema_version: 1
+review_status: synthetic-seeds-not-human-reviewed
+cases:
+  - {capability: workspace.validate-scoped-delta, lane: normal, expected: resolved, input: {before: {owned/a: x}, after: {owned/a: y}, allowed: ['owned/**']}}
+  - {capability: workspace.validate-scoped-delta, lane: adversarial, expected: review, input: {before: {source: x}, after: {source: y}, allowed: ['owned/**']}}
+  - {capability: workspace.change-packet, lane: normal, expected: extractive, input: {repository_fixture: clean-git}}
+  - {capability: workspace.change-packet, lane: degraded, expected: partial, input: {repository_fixture: non-git}}
+  - {capability: repo.preflight, lane: normal, expected: ready, input: {repository_fixture: clean-git}}
+  - {capability: repo.preflight, lane: ambiguous, expected: warning, input: {repository_fixture: detached-head}}
+  - {capability: workspace.retrieve-context, lane: normal, expected_paths: [memory.md], input: {query: memory validation}}
+  - {capability: workspace.retrieve-context, lane: degraded, expected: lexical-result, providers: []}
+  - {capability: workspace.semantic-duplicate, lane: normal, expected: exact, input: {target: identical text}}
+  - {capability: workspace.semantic-duplicate, lane: adversarial, expected: review-only, input: {target: related but distinct text}}
+  - {capability: workspace.classify-artifact, lane: normal, expected: design, input: {path: design.md, text: design specification}}
+  - {capability: workspace.classify-artifact, lane: ambiguous, expected: abstain, input: {path: note.md, text: mixed content}}
+  - {capability: text.claim-evidence-review, lane: normal, expected: supported, input: {claim: server healthy, evidence: server healthy}}
+  - {capability: text.claim-evidence-review, lane: adversarial, expected: contradicted, input: {claim: server healthy, evidence: server not healthy}}
+  - {capability: session.context-packet, lane: normal, expected: bounded, input: {query: current goal}}
+  - {capability: session.context-packet, lane: adversarial, expected: omitted-count, input: {budget: 1}}
+  - {capability: creative.lyric-audit, lane: normal, expected: no-objective-errors, input: {lyrics_fixture: coherent-song}}
+  - {capability: creative.lyric-audit, lane: adversarial, expected: production-contamination, input: {lyrics_fixture: technical-terms}}
+  - {capability: runtime.issue-triage, lane: normal, expected: network, input: {log: connection timeout}}
+  - {capability: runtime.issue-triage, lane: ambiguous, expected: ranked-candidates, input: {log: generic fatal error}}

@@ -7,8 +7,9 @@ import numpy as np
 
 from ...contracts import EvidenceReference, PrimitiveMetrics, PrimitiveResult, Provenance
 from ...engine import CapabilityUnavailable, ExecutionContext
+from ...generic import provider_identity
 from ...registry import CapabilityRegistry
-from ...providers import ProviderUnavailable
+from ...providers import EmbeddingProvider, EmbeddingRequest, ProviderUnavailable
 from . import analysis, level1
 
 
@@ -106,28 +107,15 @@ class SemanticSimilarityPrimitive:
     def execute(self, context: ExecutionContext, config: dict, dependencies: dict) -> PrimitiveResult:
         chunks: list[analysis.Chunk] = context.state["chunks"]
         model_id = str(config.get("model_id", "all-MiniLM-L6-v2"))
-        preferred_port = int(config.get("preferred_port", 8123))
         provider_id = str(config.get("provider", "embeddings"))
         provider = context.providers.get(provider_id)
-        if provider is None:
+        if provider is None or not isinstance(provider, EmbeddingProvider):
             raise CapabilityUnavailable(
-                f"Embedding provider '{provider_id}' is not configured",
+                f"Embedding provider '{provider_id}' is not configured or incompatible",
                 "Configure an embedding provider, or keep semantic similarity optional",
             )
-        try:
-            adapter = provider.invoke("describe", {"model_id": model_id})
-        except ProviderUnavailable as exc:
-            raise CapabilityUnavailable(
-                str(exc), exc.remediation,
-            ) from exc
-        model_identity = __import__("json").dumps({
-            "provider": provider_id,
-            "model": model_id,
-            "revision": adapter.get("revision"),
-            "sha256": adapter.get("model_sha256"),
-            "pooling": adapter.get("pooling"),
-            "max_length": adapter.get("max_length"),
-        }, sort_keys=True, separators=(",", ":"))
+        identity = provider_identity(provider, model_id)
+        model_identity = __import__("json").dumps(identity, sort_keys=True, separators=(",", ":"))
         cache = analysis.EmbeddingCache(context.workspace / "tmp" / "memory-validation" / "embeddings.sqlite3")
         vectors: list[np.ndarray | None] = []
         misses: list[int] = []
@@ -142,13 +130,11 @@ class SemanticSimilarityPrimitive:
                 try:
                     for offset in range(0, len(misses), int(config.get("batch_size", 32))):
                         indexes = misses[offset:offset + int(config.get("batch_size", 32))]
-                        response = provider.invoke("embed", {
-                            "model_id": model_id,
-                            "preferred_port": preferred_port,
-                            "texts": [chunks[index].text for index in indexes],
-                        })
-                        batch = response["vectors"]
-                        service_info = response.get("service", {})
+                        response = provider.embed(EmbeddingRequest(
+                            model_id=model_id, texts=[chunks[index].text for index in indexes]
+                        ))
+                        batch = response.vectors
+                        service_info = response.model.get("service", {})
                         for index, raw in zip(indexes, batch):
                             vector = np.asarray(raw, dtype=np.float32)
                             vectors[index] = vector
@@ -163,7 +149,8 @@ class SemanticSimilarityPrimitive:
             cache.close()
         provenance = Provenance(
             implementation=__name__, version=VERSION, model_id=model_id,
-            model_revision=adapter.get("revision"), model_sha256=adapter.get("model_sha256"),
+            model_revision=identity.get("model_revision", identity.get("revision")),
+            model_sha256=identity.get("model_sha256"),
             verification=[{"foundry_base_url": service_info.get("base_url"), "managed": service_info.get("managed")}],
         )
         return _result(self.capability, {"embedded_chunks": len(chunks), "model_id": model_id},

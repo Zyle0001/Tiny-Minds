@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -63,7 +64,6 @@ def test_base_wheel_functions_without_workspace_or_foundry(tmp_path: Path) -> No
     sterile_env["PATH"] = str(python.parent)
     forbidden = {"Tools", "Cognition", "Projects", "Metrics", "Reports", "foundry-local-runtime"}
     assert forbidden.isdisjoint({item.name for item in sterile.iterdir()})
-
     probe = run(
         [str(python), "-c", (
             "import importlib.util,json;"
@@ -84,7 +84,7 @@ def test_base_wheel_functions_without_workspace_or_foundry(tmp_path: Path) -> No
 
     capabilities = run([str(executable), "capabilities", "--json"], cwd=sterile, env=sterile_env)
     assert json.loads(capabilities.stdout)["capabilities"] == [
-        "core.hash.sha256", "core.provider.invoke", "core.structure.validate-mapping"
+        "core.hash.sha256", "core.structure.validate-mapping"
     ]
 
     manifest = sterile / "portable.yaml"
@@ -92,6 +92,7 @@ def test_base_wheel_functions_without_workspace_or_foundry(tmp_path: Path) -> No
         """schema_version: 1
 id: sterile-portable
 version: '1'
+integrations: [generic-workspace]
 nodes:
   - id: hash
     capability: core.hash.sha256
@@ -99,15 +100,13 @@ nodes:
   - id: structure
     capability: core.structure.validate-mapping
     config: {input_key: document, required: [id, kind]}
-  - id: provider
-    capability: core.provider.invoke
-    required: false
-    config: {provider: embeddings, operation: embed}
+  - id: retrieve
+    capability: workspace.retrieve-context
 """,
         encoding="utf-8",
     )
     request = sterile / "input.json"
-    request.write_text('{"value":"sterile","document":{"id":1,"kind":"proof"}}', encoding="utf-8")
+    request.write_text('{"value":"sterile","document":{"id":1,"kind":"proof"},"query":"sterile","documents":[{"path":"proof.md","text":"sterile proof"}]}', encoding="utf-8")
     pipeline = subprocess.run(
         [str(executable), "run", str(manifest), "--input", str(request), "--no-write", "--json"],
         cwd=sterile, env=sterile_env, capture_output=True, text=True, check=False, timeout=30,
@@ -117,6 +116,80 @@ nodes:
     assert result["status"] == "partial"
     assert result["primitives"]["hash"]["status"] == "success"
     assert result["primitives"]["structure"]["data"]["valid"] is True
-    assert result["primitives"]["provider"]["status"] == "unavailable"
-    assert "not configured" in result["primitives"]["provider"]["diagnostics"][0]
+    assert result["primitives"]["retrieve"]["status"] == "degraded"
+    assert "provider unavailable" in result["primitives"]["retrieve"]["diagnostics"][0].lower()
     assert forbidden.isdisjoint({item.name for item in sterile.iterdir()})
+
+
+@pytest.mark.sterile
+@pytest.mark.skipif(not RUN_STERILE, reason="set TINY_MINDS_RUN_STERILE_WHEEL=1 for isolated wheel acceptance")
+def test_separate_http_provider_extension_without_foundry(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    env = dict(os.environ)
+    run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheelhouse), str(repo)], cwd=tmp_path, env=env)
+    run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheelhouse), str(repo / "examples" / "http-provider")], cwd=tmp_path, env=env)
+    sterile = tmp_path / "sterile"
+    sterile.mkdir()
+    venv = sterile / "venv"
+    run([sys.executable, "-m", "venv", str(venv)], cwd=sterile, env=env)
+    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    executable = venv / ("Scripts/tiny-minds.exe" if os.name == "nt" else "bin/tiny-minds")
+    core_wheel = next(wheelhouse.glob("tiny_minds-*.whl"))
+    provider_wheel = next(wheelhouse.glob("tiny_minds_example_http_provider-*.whl"))
+    run([str(python), "-m", "pip", "install", str(core_wheel)], cwd=sterile, env=env)
+    run([str(python), "-m", "pip", "install", "--no-deps", str(provider_wheel)], cwd=sterile, env=env)
+    sterile_env = {key: value for key, value in env.items() if "FOUNDRY" not in key.upper() and "AGENTIC" not in key.upper() and not key.upper().startswith("TINY_MINDS")}
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = subprocess.Popen(
+        [str(python), "-m", "tiny_minds_example_http.fake_server", "--port", str(port)],
+        cwd=sterile, env=sterile_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        config = sterile / "config.yaml"
+        config.write_text(f"""schema_version: 1
+providers:
+  - {{id: embeddings, kind: embeddings, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
+  - {{id: reranker, kind: reranker, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
+  - {{id: nli, kind: nli, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
+  - {{id: classification, kind: classification, implementation: example-http, endpoint: 'http://127.0.0.1:{port}'}}
+""", encoding="utf-8")
+        manifest = sterile / "retrieve.yaml"
+        manifest.write_text("""schema_version: 1
+id: external-provider
+version: '1'
+integrations: [generic-workspace]
+nodes:
+  - {id: retrieve, capability: workspace.retrieve-context}
+""", encoding="utf-8")
+        request = sterile / "input.json"
+        request.write_text('{"query":"alpha","documents":[{"path":"a","text":"alpha memory"},{"path":"b","text":"beta music"}]}', encoding="utf-8")
+        completed = None
+        for _ in range(20):
+            completed = subprocess.run(
+                [str(executable), "run", str(manifest), "--config", str(config), "--input", str(request), "--no-write", "--json"],
+                cwd=sterile, env=sterile_env, capture_output=True, text=True, check=False, timeout=30,
+            )
+            if completed.returncode == 0:
+                break
+            import time
+            time.sleep(0.1)
+        assert completed is not None and completed.returncode == 0, completed.stderr
+        payload = json.loads(completed.stdout)
+        assert payload["primitives"]["retrieve"]["data"]["results"][0]["path"] == "a"
+        probe_code = (
+            "from pathlib import Path;from tiny_minds.application import build_configured_providers;"
+            "from tiny_minds.providers import *;c=load_runtime_config(Path(r'" + str(config) + "'));"
+            "p=build_configured_providers(c);"
+            "assert p.get('nli').nli(NliRequest(pairs=[NliPair(premise='alpha',hypothesis='alpha')])).scores;"
+            "assert p.get('classification').classify(ClassificationRequest(texts=['alpha'],labels=['alpha','beta'])).scores"
+        )
+        run([str(python), "-c", probe_code], cwd=sterile, env=sterile_env)
+        assert not (sterile / "Tools").exists()
+        assert "FOUNDRY" not in " ".join(sterile_env).upper()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -8,10 +9,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .application import build_integration_providers, build_registry, execute_pipeline
+from .application import build_configured_providers, build_integration_providers, build_registry, execute_pipeline
 from .contracts import RunRequest
 from .engine import PipelineExecutionError
+from .extensions import discover_doctor_checks, discover_service_controls
 from .manifest import load_manifest
+from .providers import ProviderRegistry, load_runtime_config
 from .telemetry import append_telemetry
 
 
@@ -49,26 +52,30 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     capabilities = subparsers.add_parser("capabilities")
-    capabilities.add_argument("--integration", action="append", choices=("workspace-memory",), default=[])
+    capabilities.add_argument("--integration", action="append", default=[])
+    capabilities.add_argument("--config")
     capabilities.add_argument("--json", action="store_true")
 
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--workspace")
-    doctor.add_argument("--integration", action="append", choices=("workspace-memory",), default=[])
+    doctor.add_argument("--integration", action="append", default=[])
+    doctor.add_argument("--config")
     doctor.add_argument("--json", action="store_true")
 
     run = subparsers.add_parser("run")
     run.add_argument("pipeline")
     run.add_argument("--workspace")
     run.add_argument("--input")
+    run.add_argument("--config")
     run.add_argument("--no-write", action="store_true")
     run.add_argument("--debug", action="store_true")
     run.add_argument("--json", action="store_true")
 
     service = subparsers.add_parser("service")
     service.add_argument("action", choices=("status", "ensure", "stop"))
-    service.add_argument("service", choices=("foundry",))
+    service.add_argument("service")
     service.add_argument("--workspace")
+    service.add_argument("--config")
     service.add_argument("--port", type=int, default=8123)
     service.add_argument("--json", action="store_true")
     return parser
@@ -82,19 +89,55 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "capabilities":
+            runtime_config = load_runtime_config(Path(args.config)) if args.config else None
             _emit({
                 "schema_version": 1,
                 "runtime": "tiny-minds-core",
                 "integrations": args.integration,
-                "capabilities": build_registry(args.integration).capabilities(),
+                "capabilities": build_registry(args.integration, extension_allowlist=(runtime_config.allowed_extensions if runtime_config else args.integration)).capabilities(),
             })
             return 0
         if args.command == "doctor":
+            runtime_config = load_runtime_config(Path(args.config)) if args.config else None
             checks = {
                 "python_supported": sys.version_info >= (3, 10),
                 "core_registry": bool(build_registry().capabilities()),
             }
+            if runtime_config:
+                doctor_context = {"workspace": str(_workspace(args.workspace)), "config": runtime_config}
+                for check_id, extension in discover_doctor_checks(runtime_config.allowed_extensions).items():
+                    checks[check_id] = extension.check(doctor_context)
             integrations: dict[str, Any] = {}
+            provider_checks: list[dict[str, Any]] = []
+            checked_hashes: dict[str, str] = {}
+            if runtime_config:
+                workspace = _workspace(args.workspace)
+                for provider in runtime_config.providers:
+                    check: dict[str, Any] = {
+                        "id": provider.id, "kind": provider.kind, "implementation": provider.implementation,
+                        "configured": True,
+                    }
+                    if provider.implementation == "foundry":
+                        model_path = workspace / "Tools" / "foundry-local-runtime" / "ONNX host service" / "models" / str(provider.model_id) / "model.onnx"
+                        check["model_installed"] = model_path.is_file()
+                        if model_path.is_file() and provider.model_sha256:
+                            key = str(model_path)
+                            if key not in checked_hashes:
+                                digest = hashlib.sha256()
+                                with model_path.open("rb") as stream:
+                                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                                        digest.update(block)
+                                checked_hashes[key] = digest.hexdigest()
+                            check["checksum_matches"] = checked_hashes[key].casefold() == provider.model_sha256.casefold()
+                    else:
+                        check["endpoint_configured"] = bool(provider.endpoint)
+                    provider_checks.append(check)
+                checks["providers_ready"] = all(
+                    item.get("configured", False)
+                    and item.get("model_installed", item.get("endpoint_configured", True))
+                    and item.get("checksum_matches", True)
+                    for item in provider_checks
+                )
             if "workspace-memory" in args.integration:
                 workspace = _workspace(args.workspace)
                 model = workspace / "Tools" / "foundry-local-runtime" / "ONNX host service" / "models" / "all-MiniLM-L6-v2" / "adapter.json"
@@ -114,7 +157,11 @@ def main(argv: list[str] | None = None) -> int:
                         "provider": "foundry",
                     },
                 }
-            healthy = all(checks.values()) and all(
+            check_health = all(
+                value if isinstance(value, bool) else bool(value.get("healthy", value.get("status") == "ready"))
+                for value in checks.values()
+            )
+            healthy = check_health and all(
                 item.get("status") == "ready" for item in integrations.values()
             )
             _emit({
@@ -122,24 +169,34 @@ def main(argv: list[str] | None = None) -> int:
                 "runtime": "tiny-minds-core",
                 "status": "healthy" if healthy else "degraded",
                 "checks": checks,
-                "providers": [],
+                "providers": provider_checks,
                 "integrations": integrations,
             })
             return 0 if healthy else 2
         if args.command == "service":
             workspace = _workspace(args.workspace)
             try:
-                from .services import FoundryManager, FoundryServiceError
-                manager = FoundryManager(workspace, record_telemetry=True)
+                if args.service == "foundry":
+                    from .services import FoundryManager, FoundryServiceError
+                    manager = FoundryManager(workspace, record_telemetry=True)
+                else:
+                    if not args.config:
+                        raise ValueError("External service controls require --config")
+                    runtime_config = load_runtime_config(Path(args.config))
+                    controls = discover_service_controls(runtime_config.allowed_extensions)
+                    if args.service not in controls:
+                        raise ValueError(f"Unknown or non-allowlisted service '{args.service}'")
+                    manager = controls[args.service].factory({"workspace": workspace, "config": runtime_config})
                 operation = {"status": manager.status, "ensure": manager.ensure, "stop": manager.stop}[args.action]
                 payload = operation(args.port) if args.action != "stop" else operation()
-            except (ImportError, FoundryServiceError) as exc:
-                raise PipelineExecutionError(f"Optional Foundry integration is unavailable: {exc}") from exc
+            except (ImportError, RuntimeError) as exc:
+                raise PipelineExecutionError(f"Optional service integration is unavailable: {exc}") from exc
             _emit(payload)
             return 0 if payload.get("healthy", True) else 2
         if args.command == "run":
             workspace = _workspace(args.workspace)
             manifest = load_manifest(_manifest(workspace, args.pipeline))
+            runtime_config = load_runtime_config(Path(args.config)) if args.config else None
             payload = _request_payload(args.input)
             if any(key in payload for key in ("schema_version", "inputs", "constraints", "debug")):
                 request = RunRequest.model_validate(payload)
@@ -152,8 +209,17 @@ def main(argv: list[str] | None = None) -> int:
             providers = build_integration_providers(
                 manifest.integrations, workspace, record_telemetry=not args.no_write
             )
-            result = execute_pipeline(manifest, request, workspace, providers)
-            if not args.no_write and "workspace-memory" in manifest.integrations:
+            if runtime_config:
+                configured = build_configured_providers(
+                    runtime_config, workspace=workspace, record_telemetry=not args.no_write
+                )
+                for provider_id in configured.providers():
+                    providers.register(provider_id, configured.get(provider_id))
+            result = execute_pipeline(
+                manifest, request, workspace, providers,
+                extension_allowlist=(runtime_config.allowed_extensions if runtime_config else None),
+            )
+            if not args.no_write and manifest.integrations:
                 try:
                     append_telemetry(workspace, result)
                 except OSError as exc:

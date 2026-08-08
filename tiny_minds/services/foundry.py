@@ -225,3 +225,36 @@ class FoundryManager:
         if len(vectors) != len(texts):
             raise FoundryServiceError("Foundry returned a different number of embeddings than requested")
         return vectors, service
+
+    def rerank(self, query: str, documents: list[str], model_id: str, preferred_port: int = 8123) -> tuple[list[float], dict[str, Any]]:
+        service = self.ensure_model(model_id, preferred_port)
+        payload = _json_request(
+            f"{service['base_url']}/v1/rerank", method="POST",
+            payload={"model": model_id, "query": query, "documents": documents}, timeout=120.0,
+        )
+        scores = [float(item) for item in payload.get("scores", [])]
+        if len(scores) != len(documents):
+            raise FoundryServiceError("Foundry returned a different number of reranking scores than requested")
+        return scores, service
+
+    def nli(self, pairs: list[dict[str, str]], model_id: str, preferred_port: int = 8123) -> tuple[list[dict[str, float]], dict[str, Any]]:
+        service = self.ensure_model(model_id, preferred_port)
+        payload = _json_request(
+            f"{service['base_url']}/v1/nli", method="POST",
+            payload={"model": model_id, "pairs": pairs}, timeout=120.0,
+        )
+        scores = payload.get("scores", [])
+        if len(scores) != len(pairs):
+            raise FoundryServiceError("Foundry returned a different number of NLI scores than requested")
+        return scores, service
+
+    def classify(self, texts: list[str], labels: list[str], model_id: str, preferred_port: int = 8123) -> tuple[list[dict[str, float]], dict[str, Any]]:
+        service = self.ensure_model(model_id, preferred_port)
+        payload = _json_request(
+            f"{service['base_url']}/v1/classify", method="POST",
+            payload={"model": model_id, "input": texts, "labels": labels}, timeout=120.0,
+        )
+        scores = payload.get("scores", [])
+        if len(scores) != len(texts):
+            raise FoundryServiceError("Foundry returned a different number of classification scores than requested")
+        return scores, service

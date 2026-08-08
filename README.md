@@ -4,7 +4,7 @@ Tiny Minds is a portable cognitive-machinery runtime. It replaces broad LLM call
 
 Tiny Minds does not call frontier models. A pipeline returns `resolved`, `review`, or `escalate` with bounded evidence so the host agent can decide whether expensive reasoning is necessary.
 
-Current maturity: the base wheel is portable and verified, but third-party provider discovery and config-only arbitrary-workspace adoption are not yet implemented. See [STATUS.md](STATUS.md) for the evidence, limitations, and recommended path.
+Current maturity: `0.2.0` is a developer preview. The base wheel and separately packaged HTTP-provider extension are portable and sterile-tested; the ten generic capabilities remain experimental until their human-reviewed calibration gates pass. See [STATUS.md](STATUS.md).
 
 ## Portable Core
 
@@ -16,7 +16,11 @@ tiny-minds capabilities --json
 tiny-minds run path/to/pipeline.yaml --input path/to/input.json --no-write --json
 ```
 
-Core capability discovery publishes only `core.hash.sha256`, `core.structure.validate-mapping`, and `core.provider.invoke`. Provider-backed nodes must be optional or supplied an explicit provider; absence returns bounded degradation rather than triggering a fallback.
+Core capability discovery publishes only `core.hash.sha256` and `core.structure.validate-mapping`. Selecting `--integration generic-workspace` adds ten workspace-neutral preview capabilities. Provider-backed stages use explicit typed embedding, reranking, NLI, and classification protocols; absence retains deterministic evidence and returns partial degradation.
+
+Provider configuration is versioned YAML selected with `--config`. It contains model identity, revision, checksum, timeouts, batch limits, non-secret settings, and an optional environment-variable name for authentication. Manifests cannot select implementations or contain credentials.
+
+Separately packaged providers and integrations are discovered through `tiny_minds.providers` and `tiny_minds.integrations` entry points. The package under `examples/http-provider` proves all four model protocols without Foundry.
 
 ## Optional Workspace Integration
 
@@ -38,15 +42,17 @@ All commands emit one JSON document on stdout. Diagnostics use stderr. Pipeline 
 - `tiny_minds/manifest.py` — declarative DAG validation.
 - `tiny_minds/engine.py` — deterministic execution and routing.
 - `tiny_minds/providers.py` — provider-neutral injection contract and empty-provider baseline.
+- `tiny_minds/extensions.py` — allowlisted package entry-point discovery and API negotiation.
+- `tiny_minds/generic.py` — portable inventory, chunking, hashing, BM25, Git probes, and cache utilities.
 - `tiny_minds/builtins.py` — portable deterministic core primitives.
 - `tiny_minds/services/` — isolated service lifecycle adapters.
 - `tiny_minds/integrations/workspace_memory/` — the first complete Levels 1–3 proof.
 
-Foundry Local Runtime remains this workspace's ONNX execution substrate. It is injected by the explicit `workspace-memory` integration. The base runtime does not import, discover, or require it. The integration may start its backend on demand only when a reached model node has cache misses. It never starts the UI or downloads models implicitly.
+Foundry Local Runtime remains this workspace's reference ONNX substrate. Generic pipelines select it explicitly through provider configuration; `workspace-memory` retains its compatible injected embedding adapter. The base runtime does not import, discover, or require Foundry. A reached uncached model stage may start its backend; discovery and deterministic stages do not. Models are never downloaded implicitly.
 
 ## Authority Boundary
 
-Version 1 is read-only toward source knowledge. It may write only declared reports, metadata-only telemetry, disposable caches, and managed-service state. Findings never authorize their own repair.
+Version 0.2 is read-only toward caller-owned material. It may write only declared reports, metadata-only telemetry, disposable caches, and managed-service state. Findings never authorize their own repair.
 
 ## Provenance
 

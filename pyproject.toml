@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiny-minds"
-version = "1.0.0"
+version = "0.2.0"
 description = "Portable cognitive machinery runtime for evidence-first local pipelines"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,6 +21,9 @@ dev = ["numpy>=1.24", "psutil>=5.9", "pytest>=8.0"]
 
 [project.scripts]
 tiny-minds = "tiny_minds.cli:main"
+
+[project.entry-points."tiny_minds.integrations"]
+generic-workspace = "tiny_minds.integrations.generic:extension"
 
 [tool.setuptools.packages.find]
 include = ["tiny_minds*"]

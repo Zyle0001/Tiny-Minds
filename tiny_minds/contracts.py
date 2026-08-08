@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 SCHEMA_VERSION = 1
+EXTENSION_API_VERSION = 1
 
 
 class ContractModel(BaseModel):
@@ -39,7 +40,7 @@ class PrimitiveMetrics(ContractModel):
 class PrimitiveResult(ContractModel):
     capability: str
     version: str
-    status: Literal["success", "skipped", "unavailable", "error"]
+    status: Literal["success", "degraded", "skipped", "unavailable", "error"]
     data: dict[str, Any] = Field(default_factory=dict)
     scores: dict[str, float] = Field(default_factory=dict)
     evidence: list[EvidenceReference] = Field(default_factory=list)
@@ -71,3 +72,61 @@ class RunRequest(ContractModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     constraints: dict[str, Any] = Field(default_factory=dict)
     debug: bool = False
+
+
+class ArtifactRef(ContractModel):
+    """Portable identity for caller-owned material."""
+
+    uri: str
+    media_type: str = "application/octet-stream"
+    content_sha256: str
+    size_bytes: int = Field(default=0, ge=0)
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class ChunkRef(ContractModel):
+    artifact: ArtifactRef
+    chunk_id: str
+    heading: str | None = None
+    ordinal: int = Field(default=0, ge=0)
+    content_sha256: str
+    excerpt: str = Field(default="", max_length=240)
+
+
+class WorkspaceScope(ContractModel):
+    root: str = "."
+    include: list[str] = Field(default_factory=lambda: ["**/*"])
+    exclude: list[str] = Field(default_factory=list)
+    policy_profile: str = "generic"
+    git_baseline: str | None = None
+
+
+class ChangeEntry(ContractModel):
+    path: str
+    status: Literal["added", "modified", "deleted", "renamed", "untracked"]
+    previous_path: str | None = None
+    before_sha256: str | None = None
+    after_sha256: str | None = None
+    additions: int = Field(default=0, ge=0)
+    deletions: int = Field(default=0, ge=0)
+
+
+class ChangeSet(ContractModel):
+    base: str | None = None
+    head: str | None = None
+    dirty: bool = False
+    entries: list[ChangeEntry] = Field(default_factory=list)
+
+
+class RankedCandidate(ContractModel):
+    chunk: ChunkRef
+    scores: dict[str, float] = Field(default_factory=dict)
+    rank: int = Field(ge=1)
+
+
+class BoundedContextPacket(ContractModel):
+    evidence: list[EvidenceReference] = Field(default_factory=list)
+    unresolved: list[str] = Field(default_factory=list)
+    degradation: list[str] = Field(default_factory=list)
+    omitted_count: int = Field(default=0, ge=0)
+    output_bytes: int = Field(default=0, ge=0)

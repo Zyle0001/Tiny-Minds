@@ -5,7 +5,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .contracts import PipelineIdentity, PipelineResult, PrimitiveMetrics, PrimitiveResult, Provenance, RunRequest
 from .manifest import Condition, PipelineManifest
@@ -30,6 +30,10 @@ class ExecutionContext:
     manifest: PipelineManifest
     providers: ProviderRegistry
     state: dict[str, Any] = field(default_factory=dict)
+    cancel_check: Callable[[], bool] | None = None
+
+    def cancelled(self) -> bool:
+        return bool(self.cancel_check and self.cancel_check())
 
 
 def _value_at(result: PrimitiveResult, path: str) -> Any:
@@ -80,18 +84,23 @@ class PipelineApplication:
         self.registry = registry
         self.providers = providers or ProviderRegistry()
 
-    def run(self, manifest: PipelineManifest, request: RunRequest, workspace: Path) -> PipelineResult:
+    def run(
+        self, manifest: PipelineManifest, request: RunRequest, workspace: Path,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> PipelineResult:
         unknown = sorted({node.capability for node in manifest.nodes} - set(self.registry.capabilities()))
         if unknown:
             raise ValueError(f"Manifest references unregistered capabilities: {unknown}")
         started = time.perf_counter()
         deadline = started + manifest.budgets.timeout_seconds
-        context = ExecutionContext(workspace.resolve(), request, manifest, self.providers)
+        context = ExecutionContext(workspace.resolve(), request, manifest, self.providers, cancel_check=cancel_check)
         results: dict[str, PrimitiveResult] = {}
         diagnostics: list[str] = []
         partial = False
 
         for node in _topological_nodes(manifest):
+            if context.cancelled():
+                raise PipelineExecutionError("Pipeline execution was cancelled")
             if time.perf_counter() > deadline:
                 raise PipelineExecutionError(f"Pipeline exceeded {manifest.budgets.timeout_seconds}s budget")
             if node.when and not condition_matches(node.when, results):
@@ -132,6 +141,10 @@ class PipelineApplication:
                 )
             result.metrics.duration_ms = int((time.perf_counter() - node_started) * 1000)
             results[node.id] = result
+            if context.cancelled():
+                raise PipelineExecutionError("Pipeline execution was cancelled")
+            if result.status == "degraded":
+                partial = True
             if node.enforce_candidate_budget and result.metrics.candidate_count > manifest.budgets.max_candidates:
                 raise PipelineExecutionError(
                     f"Capability '{node.capability}' produced {result.metrics.candidate_count} candidates, "

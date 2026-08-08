@@ -5,12 +5,11 @@ import json
 from typing import Any
 
 from .contracts import PrimitiveResult, Provenance
-from .engine import CapabilityUnavailable, ExecutionContext
-from .providers import ProviderUnavailable
+from .engine import ExecutionContext
 from .registry import CapabilityRegistry
 
 
-VERSION = "1.0.0"
+VERSION = "0.2.0"
 
 
 def _result(capability: str, data: dict[str, Any]) -> PrimitiveResult:
@@ -56,29 +55,6 @@ class ValidateMappingPrimitive:
         })
 
 
-class ProviderInvokePrimitive:
-    capability = "core.provider.invoke"
-    version = VERSION
-
-    def execute(self, context: ExecutionContext, config: dict, dependencies: dict) -> PrimitiveResult:
-        provider_id = str(config.get("provider", "default"))
-        provider = context.providers.get(provider_id)
-        if provider is None:
-            raise CapabilityUnavailable(
-                f"Provider '{provider_id}' is not configured",
-                "Install and explicitly configure a compatible provider, or keep this node optional",
-            )
-        operation = str(config.get("operation", "invoke"))
-        payload = config.get("payload", {})
-        if not isinstance(payload, dict):
-            raise ValueError("Provider payload must be a mapping")
-        try:
-            result = provider.invoke(operation, payload)
-        except ProviderUnavailable as exc:
-            raise CapabilityUnavailable(str(exc), exc.remediation) from exc
-        return _result(self.capability, {"provider": provider_id, "operation": operation, "result": result})
-
-
 def register_core(registry: CapabilityRegistry) -> None:
-    for primitive in (Sha256Primitive, ValidateMappingPrimitive, ProviderInvokePrimitive):
+    for primitive in (Sha256Primitive, ValidateMappingPrimitive):
         registry.register(primitive.capability, primitive)

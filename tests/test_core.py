@@ -33,11 +33,12 @@ class RecordingPrimitive:
         )
 
 
-def manifest(nodes: list[dict], **budgets) -> PipelineManifest:
+def manifest(nodes: list[dict], integrations: list[str] | None = None, **budgets) -> PipelineManifest:
     return PipelineManifest.model_validate({
         "schema_version": 1,
         "id": "test",
         "version": "1",
+        "integrations": integrations or [],
         "nodes": nodes,
         "budgets": {"timeout_seconds": 5, "max_candidates": 50, "max_output_bytes": 100_000, **budgets},
     })
@@ -114,22 +115,33 @@ def test_application_service_accepts_objects_without_subprocess(tmp_path: Path) 
     assert payload["status"] == "success"
 
 
+def test_application_cancellation_is_checked_before_execution(tmp_path: Path) -> None:
+    with pytest.raises(PipelineExecutionError, match="cancelled"):
+        execute_pipeline(
+            manifest([{"id": "hash", "capability": "core.hash.sha256", "config": {"value": "x"}}]),
+            RunRequest(), tmp_path, cancel_check=lambda: True,
+        )
+
+
 def test_core_deterministic_primitives_and_absent_provider(tmp_path: Path) -> None:
     portable = manifest([
         {"id": "hash", "capability": "core.hash.sha256", "config": {"input_key": "value"}},
         {"id": "structure", "capability": "core.structure.validate-mapping",
          "config": {"input_key": "document", "required": ["id", "kind"]}},
-        {"id": "provider", "capability": "core.provider.invoke", "required": False,
-         "config": {"provider": "embeddings", "operation": "embed"}},
-    ])
+        {"id": "retrieve", "capability": "workspace.retrieve-context"},
+    ], integrations=["generic-workspace"])
     result = execute_pipeline(
         portable,
-        {"schema_version": 1, "inputs": {"value": "portable", "document": {"id": 1, "kind": "test"}}},
+        {"schema_version": 1, "inputs": {
+            "value": "portable", "document": {"id": 1, "kind": "test"},
+            "query": "portable", "documents": [{"path": "proof.md", "text": "portable proof"}],
+            "no_write": True,
+        }},
         tmp_path,
     )
     assert result.status == "partial"
     assert result.primitives["hash"].status == "success"
     assert len(result.primitives["hash"].data["digest"]) == 64
     assert result.primitives["structure"].data["valid"] is True
-    assert result.primitives["provider"].status == "unavailable"
-    assert "not configured" in result.primitives["provider"].diagnostics[0]
+    assert result.primitives["retrieve"].status == "degraded"
+    assert "provider unavailable" in result.primitives["retrieve"].diagnostics[0].lower()

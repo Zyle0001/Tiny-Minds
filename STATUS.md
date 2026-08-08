@@ -1,134 +1,48 @@
-# Tiny Minds Status and Recommended Path
+# Tiny Minds Status
 
 Last reviewed: 2026-08-08
 
 ## Current Position
 
-Tiny Minds is a working, provider-neutral foundation with one mature workspace-specific proof. It is not yet a config-only product that an external user can point at an arbitrary workspace and model host.
-
-The base wheel is portable. Extending it currently requires Python development against the runtime APIs.
+Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The generic capabilities are intentionally not bootstrap-published until the gates in `calibration/0.2.0/gates.yaml` have human-reviewed evidence.
 
 ## Implemented and Verified
 
-### Portable core
+- Portable Python 3.10+ base wheel with versioned contracts, safe YAML DAGs, budgets, routing, stable JSON output, and no frontier-model calls.
+- Stable artifact, chunk, workspace-scope, change-set, ranked-candidate, and bounded-context schemas.
+- Typed embedding, reranking, NLI, and classification providers plus versioned non-secret configuration.
+- Allowlisted package entry-point discovery with duplicate rejection and extension API negotiation.
+- Generic inventory, Markdown chunking, SHA-256 identities, normalized BM25, Git inspection, cosine comparison, and SQLite response caching.
+- Ten generic capabilities: scoped delta, change packet, preflight, retrieval, semantic duplicates, artifact classification, claim/evidence review, session packets, lyric audits, and issue triage.
+- Separately packaged HTTP provider and deterministic fake host covering all four provider protocols.
+- Sterile acceptance tests proving the base wheel and external provider work without Foundry, Agentic Workspace, NumPy, `psutil`, environment coupling, or a fixed filesystem layout.
+- Foundry adapters and endpoints for embeddings, pair reranking, NLI, and zero-shot classification.
+- Explicit pinned installers for MiniLM embeddings, MS MARCO MiniLM reranking, and MiniLM2 NLI; execution never downloads models.
+- Metadata-only telemetry, bounded excerpts, provider absence degradation, no-write behavior, and cache-hit accounting.
+- Cross-platform CI definition for Python 3.10 and 3.13 on Windows, Linux, and macOS.
 
-- Python 3.10+ package and `tiny-minds` console entrypoint.
-- Versioned Pydantic request, primitive-result, evidence, provenance, and pipeline-result contracts.
-- Reviewed YAML DAG manifests with dependency ordering, cycle rejection, allowlisted conditions, required/optional nodes, and execution budgets.
-- Explicit capability and provider registries with no dynamic execution from manifests.
-- Core deterministic primitives for SHA-256 hashing and mapping validation.
-- Generic optional-provider invocation with bounded unavailable results and no hidden fallback.
-- One JSON document on stdout and stable pipeline exit behavior.
-- Direct `PipelineApplication` and `execute_pipeline` seams for future wrappers.
+## Verification Baseline
 
-### Portability proof
+- Tiny Minds: 63 normal tests passed, 2 sterile tests skipped by default.
+- Sterile acceptance: 2/2 passed when explicitly enabled.
+- Foundry Local Runtime: 5/5 tests passed.
+- Existing workspace-memory identities and behavior remain covered by the unchanged regression suite.
 
-The sterile-wheel acceptance test builds from a disposable source copy, creates a fresh virtual environment, installs the base wheel, strips relevant environment variables, and runs outside any workspace layout. It verifies:
+## Deliberately Not Published
 
-- no Foundry directory, executable, process, or environment variable;
-- no Agentic Workspace directories or relative layout;
-- neither `psutil` nor NumPy is installed by the base wheel;
-- core doctor and capability discovery succeed;
-- deterministic primitives and DAG execution succeed;
-- an absent model provider yields explicit partial degradation;
-- the test leaves the source tree and build-artifact state unchanged.
+The seed fixtures are synthetic and are not a substitute for the plan's human-reviewed datasets. Consequently:
 
-### Optional integrations
-
-- `workspace-memory` is an explicit manifest integration and optional NumPy extra.
-- Foundry is an injected embedding provider and optional `psutil` extra.
-- Foundry model discovery, batching, lifecycle, ownership checks, telemetry, and graceful unavailability remain outside the base execution path.
-- A live provider smoke test returned a 384-dimensional MiniLM embedding and then stopped the managed process safely.
-
-### Workspace-memory proof
-
-- Existing Level 1 finding identities, event history, report locations, and wrapper exit behavior are preserved.
-- Source freshness, relationship graphs, Git co-change, normalized BM25, MiniLM similarity, SQLite caching, explicit routing, and bounded evidence are implemented.
-- Cold, warm, degraded, and idempotent paths are covered.
-- The validator remains read-only toward workspace knowledge.
-
-### Workspace adoption
-
-- Capability-first policy in `Cognition/Cognition.md` and bootstrap guidance.
-- Canonical `use-tiny-minds` skill with synchronized discovery mirrors.
-- Architecture and authority decisions recorded in workspace `DECISIONS.md`.
-- Metadata-only execution and service-lifecycle telemetry.
-
-## Not Yet Implemented
-
-### External extension and discovery
-
-- No package entry-point discovery for third-party capabilities, providers, or integrations.
-- No public CLI mechanism to select a third-party provider implementation.
-- No provider configuration schema for endpoints, model identities, timeouts, authentication references, or adapter settings.
-- The generic provider contract uses an untyped `invoke(operation, payload)` boundary rather than calibrated task-specific protocols.
-- The manifest integration allowlist currently recognizes only `workspace-memory`.
-
-### Generic workspace support
-
-- The supplied memory integration follows Agentic Workspace domains, memory conventions, exclusions, reports, and source rules.
-- There is no configurable generic filesystem inventory/chunking/retrieval integration.
-- An external user cannot reproduce the memory pipeline against a different knowledge layout using configuration alone.
-
-### External model-host support
-
-- Foundry is the only implemented model-host adapter.
-- No example HTTP embedding provider or separately packaged provider exists.
-- No secrets/configuration boundary has yet been specified for third-party host credentials.
-- The CLI currently wires Foundry specifically when the workspace-memory integration is selected.
-
-### Distribution maturity
-
-- No cross-platform CI workflow currently proves Windows, Linux, and macOS behavior.
-- No separately packaged external integration has validated the extension seam.
-- No public installation or migration guide exists for external adopters.
-- Version `1.0.0` describes the rebuilt internal contract but overstates external product maturity.
+- no generic capability is listed as bootstrap-available;
+- consuming skills do not invoke the preview pipelines automatically;
+- calibration thresholds are recorded but not claimed as met;
+- no token-saving claim is made;
+- the pinned models are installed and live-smoked locally, but the model-backed calibration datasets still require human review.
 
 ## Recommended Path
 
-### 1. Stabilize the extension SDK
-
-- Replace the generic provider invocation boundary with small typed protocols, beginning with embeddings.
-- Define public registration contracts for capabilities, providers, integrations, doctor checks, and optional service controls.
-- Discover installed extensions through Python package entry points with explicit allowlisting and duplicate rejection.
-- Add version negotiation so incompatible extension contracts fail before execution.
-
-### 2. Add safe configuration
-
-- Define a versioned provider configuration schema for endpoint, model, revision, timeout, and non-secret adapter settings.
-- Resolve secrets only through explicit host-owned references; never place credentials in manifests, reports, or telemetry.
-- Add CLI flags or a configuration file for choosing provider and integration implementations without importing user code from the pipeline manifest.
-
-### 3. Generalize workspace machinery
-
-- Extract configurable filesystem inventory, include/exclude rules, Markdown chunking, hashing, and report sinks from the Agentic Workspace integration.
-- Keep the existing memory conventions as a named policy profile rather than a universal assumption.
-- Provide a minimal generic knowledge-workspace example with no Agentic Workspace directories.
-
-### 4. Prove third-party adoption
-
-- Build a separate example package that registers an integration and a fake HTTP embedding provider through the public extension mechanism.
-- Install the released Tiny Minds wheel and example package into a sterile environment.
-- Exercise doctor, discovery, a custom workspace, deterministic nodes, provider-backed nodes, provider absence, and error contracts exclusively through the CLI.
-- Run the acceptance suite on Windows, Linux, and macOS.
-
-### 5. Prepare a public release
-
-- Use a pre-1.0 version until the external extension and adoption tests pass, or explicitly label the current release as an internal developer preview.
-- Publish concise installation, extension-author, security, and compatibility documentation.
-- Add CI for contracts, wheel builds, sterile installation, optional extras, and external example packages.
-- Only then describe Tiny Minds as usable with an arbitrary workspace and model host.
-
-## Next-Milestone Acceptance Gate
-
-The next milestone is complete only when a fresh machine can install a Tiny Minds wheel plus a separately packaged test extension and, without modifying Tiny Minds source code:
-
-1. discover the extension through the CLI;
-2. validate its configuration before execution;
-3. process an arbitrary temporary knowledge directory;
-4. call a non-Foundry fake model host;
-5. degrade cleanly when that host is absent;
-6. emit the same stable evidence contract without leaking content, vectors, or secrets; and
-7. pass on Windows, Linux, and macOS.
-
-Until that gate passes, Tiny Minds should be described as a portable cognitive-machinery foundation with a workspace-specific reference integration.
+1. Human-review and expand the seed fixtures, especially ambiguous and adversarial cases.
+2. Run the expanded fixtures through cold, warm, missing-provider, and malformed-provider audits.
+3. Record retrieval, duplicate, classification, claim-review, lyric, and issue-triage metrics against the gates.
+4. Publish only passing capabilities in `Cognition/Cognition.md` and wire only their consuming skills.
+5. Exercise the checked-in CI workflow on hosted Windows, Linux, and macOS runners.
+6. Advance releases through the planned pre-1.0 sequence; reserve `1.0.0` for fully calibrated external adoption.

@@ -1,0 +1,26 @@
+schema_version: 1
+release: 0.2.0
+review_status: synthetic-seeds-not-human-reviewed
+publishable: false
+thresholds:
+  deterministic_identity_recall: 1.0
+  unauthorized_mutations: 0
+  retrieval_recall_at_5: 0.90
+  reranker_ndcg_regression_allowed: 0.0
+  semantic_duplicate_precision: 0.85
+  artifact_classification_macro_f1: 0.85
+  claim_evidence_macro_f1: 0.80
+  lyric_objective_agreement: 0.80
+  issue_triage_top_3: 0.90
+  issue_triage_top_1: 0.70
+capabilities:
+  workspace.validate-scoped-delta: experimental
+  workspace.change-packet: experimental
+  repo.preflight: experimental
+  workspace.retrieve-context: experimental
+  workspace.semantic-duplicate: experimental
+  workspace.classify-artifact: experimental
+  text.claim-evidence-review: experimental
+  session.context-packet: experimental
+  creative.lyric-audit: experimental
+  runtime.issue-triage: experimental

@@ -59,3 +59,25 @@ def test_port_collision_selects_next_available_loopback_port(monkeypatch, tmp_pa
     state = FoundryManager(tmp_path).ensure(8123, timeout_seconds=1)
     assert state["port"] == 8124
     assert state["managed"] is True
+
+
+def test_sequence_operations_validate_response_cardinality(monkeypatch, tmp_path: Path) -> None:
+    manager = FoundryManager(tmp_path)
+    monkeypatch.setattr(manager, "ensure_model", lambda model_id, preferred_port=8123: {"base_url": "http://127.0.0.1:8123"})
+
+    def request(url, method="GET", payload=None, timeout=3.0):
+        if url.endswith("/rerank"):
+            return {"scores": [0.2, 0.8]}
+        if url.endswith("/nli"):
+            return {"scores": [{"contradiction": 0.1, "entailment": 0.8, "neutral": 0.1}]}
+        if url.endswith("/classify"):
+            return {"scores": [{"a": 0.9, "b": 0.1}]}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(foundry, "_json_request", request)
+    reranked, _ = manager.rerank("query", ["a", "b"], "reranker")
+    inferred, _ = manager.nli([{"premise": "a", "hypothesis": "a"}], "nli")
+    classified, _ = manager.classify(["a"], ["a", "b"], "nli")
+    assert reranked == [0.2, 0.8]
+    assert inferred[0]["entailment"] == 0.8
+    assert classified[0]["a"] == 0.9
