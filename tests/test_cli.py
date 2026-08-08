@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -34,10 +35,18 @@ def test_workspace_capabilities_require_explicit_integration() -> None:
 
 
 def test_core_doctor_has_no_workspace_or_provider_requirement(tmp_path: Path) -> None:
+    isolated_env = {
+        key: value for key, value in os.environ.items()
+        if "FOUNDRY" not in key.upper()
+        and "AGENTIC" not in key.upper()
+        and not key.upper().startswith("TINY_MINDS")
+        and key.upper() not in {"PYTHONPATH", "VIRTUAL_ENV"}
+    }
+    isolated_env["PATH"] = str(Path(sys.executable).parent)
     completed = subprocess.run(
         [sys.executable, "-m", "tiny_minds.cli", "doctor", "--json"],
         cwd=tmp_path, capture_output=True, text=True, check=False, timeout=20,
-        env={"PATH": str(Path(sys.executable).parent)},
+        env=isolated_env,
     )
     payload = json.loads(completed.stdout)
     assert completed.returncode == 0
