@@ -1,71 +1,106 @@
 # Tiny Minds
 
-Tiny Minds is a portable cognitive-machinery runtime. It replaces broad LLM calls with deterministic checks, hashes, retrieval, graph analysis, embeddings, classifiers, and narrow local models wherever those mechanisms can produce reliable evidence.
+LLMs are useful, but they are an expensive way to answer questions that a hash, parser, search index, graph walk, or small classifier can settle. Tiny Minds is a Python runtime for moving that work out of the prompt.
 
-Tiny Minds does not call frontier models. A pipeline returns `resolved`, `review`, or `escalate` with bounded evidence so the host agent can decide whether expensive reasoning is necessary.
-
-Current maturity: `0.2.0` is a developer preview. The base wheel and separately packaged HTTP-provider extension are portable and sterile-tested; the ten generic capabilities remain experimental until their human-reviewed calibration gates pass. See [STATUS.md](STATUS.md).
-
-## Portable Core
-
-The base wheel has no Foundry, `psutil`, NumPy, Agentic Workspace, or fixed filesystem-layout requirement. It provides versioned contracts, DAG execution, deterministic primitives, routing, and an explicit provider registry. An empty provider registry is valid.
-
-```powershell
-tiny-minds doctor --json
-tiny-minds capabilities --json
-tiny-minds run path/to/pipeline.yaml --input path/to/input.json --no-write --json
+```text
+input
+  -> deterministic checks, retrieval, graphs, and small local models
+  -> resolved result or a bounded escalation packet
+  -> LLM only when the cheap machinery cannot finish the job
 ```
 
-Core capability discovery publishes only `core.hash.sha256` and `core.structure.validate-mapping`. Selecting `--integration generic-workspace` adds ten workspace-neutral preview capabilities. Provider-backed stages use explicit typed embedding, reranking, NLI, and classification protocols; absence retains deterministic evidence and returns partial degradation.
+Tiny Minds never calls a frontier model. It runs reviewed capability pipelines and returns `resolved`, `review`, or `escalate` with the evidence behind that decision. The host agent remains responsible for anything unresolved.
 
-Provider configuration is versioned YAML selected with `--config`. It contains model identity, revision, checksum, timeouts, batch limits, non-secret settings, and an optional environment-variable name for authentication. Manifests cannot select implementations or contain credentials.
+## Where it stands
 
-Separately packaged providers and integrations are discovered through `tiny_minds.providers` and `tiny_minds.integrations` entry points. The package under `examples/http-provider` proves all four model protocols without Foundry.
+`0.2.0` is a developer preview. The runtime, extension API, typed model-provider contracts, and sterile installation path work today. The workspace memory validator is the first end-to-end proof.
 
-## Optional Workspace Integration
+Ten more capabilities are implemented, but deliberately remain experimental until their fixture sets have been reviewed and their calibration gates pass:
 
-The workspace-memory and Foundry components are optional integrations, not core requirements:
+- change-scope validation, change packets, and repository preflight;
+- context retrieval and semantic duplicate detection;
+- artifact classification and claim/evidence review;
+- session context packets;
+- lyric auditing and runtime issue triage.
 
-```powershell
-python -m pip install -e ".[workspace-memory,foundry]"
-tiny-minds capabilities --integration workspace-memory --json
-tiny-minds doctor --integration workspace-memory --workspace "C:\AI Agent Workspace\Agentic Workspace" --json
-tiny-minds run memory-validation --workspace "C:\AI Agent Workspace\Agentic Workspace" --json
-tiny-minds service status foundry --workspace "C:\AI Agent Workspace\Agentic Workspace" --json
-```
+That distinction matters. Implemented means the machinery runs. Published means there is enough evidence to let agents rely on it. See [STATUS.md](STATUS.md) and [`calibration/`](calibration/) for the current boundary.
 
-All commands emit one JSON document on stdout. Diagnostics use stderr. Pipeline manifests are reviewed YAML DAGs that may invoke only registered capabilities; they cannot execute arbitrary code.
+The CI matrix builds and tests the wheel on Windows, Linux, and macOS with Python 3.10 and 3.13. Its sterile tests install the core and an external provider into a fresh environment with no Foundry, Agentic Workspace, NumPy, `psutil`, or fixed directory layout.
 
-## Architecture
-
-- `tiny_minds/contracts.py` — versioned evidence and result schemas.
-- `tiny_minds/manifest.py` — declarative DAG validation.
-- `tiny_minds/engine.py` — deterministic execution and routing.
-- `tiny_minds/providers.py` — provider-neutral injection contract and empty-provider baseline.
-- `tiny_minds/extensions.py` — allowlisted package entry-point discovery and API negotiation.
-- `tiny_minds/generic.py` — portable inventory, chunking, hashing, BM25, Git probes, and cache utilities.
-- `tiny_minds/builtins.py` — portable deterministic core primitives.
-- `tiny_minds/services/` — isolated service lifecycle adapters.
-- `tiny_minds/integrations/workspace_memory/` — the first complete Levels 1–3 proof.
-
-Foundry Local Runtime remains this workspace's reference ONNX substrate. Generic pipelines select it explicitly through provider configuration; `workspace-memory` retains its compatible injected embedding adapter. The base runtime does not import, discover, or require Foundry. A reached uncached model stage may start its backend; discovery and deterministic stages do not. Models are never downloaded implicitly.
-
-## Authority Boundary
-
-Version 0.2 is read-only toward caller-owned material. It may write only declared reports, metadata-only telemetry, disposable caches, and managed-service state. Findings never authorize their own repair.
-
-## Provenance
-
-The original modular-cognition scaffold is preserved in Git history and tagged `legacy-scaffold` at commit `faef019572f599beaeebaa775ac1963e6734078f`. The current evidence-oriented runtime is a deliberate rebuild of that architectural idea.
-
-## Development
+## Take it for a spin
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\python.exe -m pytest
-$env:TINY_MINDS_RUN_STERILE_WHEEL="1"
-.\.venv\Scripts\python.exe -m pytest tests/test_sterile_wheel.py
+
+.\.venv\Scripts\tiny-minds.exe doctor --json
+.\.venv\Scripts\tiny-minds.exe capabilities --json
+.\.venv\Scripts\tiny-minds.exe capabilities --integration generic-workspace --json
 ```
+
+Run a manifest against JSON input:
+
+```powershell
+.\.venv\Scripts\tiny-minds.exe run path\to\pipeline.yaml `
+  --workspace path\to\workspace `
+  --input path\to\request.json `
+  --no-write `
+  --json
+```
+
+Commands emit one JSON document on stdout. Diagnostics go to stderr, so the CLI can sit behind an MCP adapter or any other host without inventing a second contract.
+
+## What the core provides
+
+- Versioned request, result, evidence, artifact, chunk, change-set, and context-packet schemas.
+- Declarative YAML DAGs with cycle checks, fixed operators, budgets, cancellation, and explicit degradation.
+- Deterministic hashing and structural validation with no model dependencies.
+- Reusable Markdown chunking, BM25 search, Git inspection, graph inputs, and SQLite-backed result caches.
+- Allowlisted package entry points for integrations, capabilities, providers, doctor checks, and service controls.
+- Typed protocols for embeddings, reranking, NLI, and zero-shot classification.
+
+An empty provider registry is a valid installation. Model-backed nodes degrade visibly when their provider is missing; there is no secret LLM fallback.
+
+## Bring your own model host
+
+Tiny Minds does not download models or dictate where inference runs. Provider configuration names an implementation, endpoint, model revision, checksum, timeout, and batch limit. Authentication is resolved from a host-owned environment reference and is never copied into manifests, evidence, caches, or telemetry.
+
+[`examples/http-provider`](examples/http-provider/) is a separately packaged provider plus a deterministic fake HTTP host. It exercises all four model protocols without Foundry or source changes to Tiny Minds.
+
+Foundry Local Runtime is the reference ONNX host used by this workspace, not a dependency of the base package. The optional adapter can start Foundry when an uncached model node is actually reached, reuse an owned instance, and leave deterministic work alone.
+
+## Hard boundaries
+
+Tiny Minds is intentionally less capable than an agent:
+
+- it cannot call a frontier LLM;
+- manifests cannot run arbitrary commands or import untrusted code;
+- pipelines do not repair, merge, move, or rewrite caller-owned material;
+- exact hashes may resolve identity, while semantic matches remain review findings;
+- telemetry contains metadata, never raw content, excerpts, vectors, diffs, logs, or credentials.
+
+Version `0.2.0` may write only declared reports, disposable caches, metadata-only telemetry, and managed-service state.
+
+## Repository map
+
+- [`tiny_minds/contracts.py`](tiny_minds/contracts.py) — public schemas.
+- [`tiny_minds/manifest.py`](tiny_minds/manifest.py) — pipeline validation.
+- [`tiny_minds/engine.py`](tiny_minds/engine.py) — DAG execution and routing.
+- [`tiny_minds/extensions.py`](tiny_minds/extensions.py) — external package discovery.
+- [`tiny_minds/providers.py`](tiny_minds/providers.py) — typed provider contracts and configuration.
+- [`tiny_minds/generic.py`](tiny_minds/generic.py) — shared inventory, retrieval, Git, and cache machinery.
+- [`tiny_minds/integrations/generic_capabilities.py`](tiny_minds/integrations/generic_capabilities.py) — the ten preview capabilities.
+- [`tiny_minds/integrations/workspace_memory/`](tiny_minds/integrations/workspace_memory/) — the first complete validation pipeline.
+
+## Development
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+
+$env:TINY_MINDS_RUN_STERILE_WHEEL = "1"
+.\.venv\Scripts\python.exe -m pytest tests\test_sterile_wheel.py
+```
+
+The original modular-cognition sketch remains in Git history and is tagged `legacy-scaffold` at commit `faef019`. The current runtime is a rebuild of the useful part of that idea: many small, inspectable mechanisms doing work that should never have needed a giant model.
 
 Licensed under Apache-2.0.
