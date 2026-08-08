@@ -4,7 +4,7 @@ Last reviewed: 2026-08-09
 
 ## Current Position
 
-Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The rebuilt runtime is on GitHub, its public description and README reflect the current architecture, and the hosted test matrix is green. Release documentation is committed, exact-artifact acceptance has passed in a clean environment, and CI uses the current Node 24 action majors. The final release candidate is rebuilt from the maintenance commit before tagging. The generic capabilities are intentionally not bootstrap-published until their gates have human-reviewed evidence.
+Tiny Minds `0.2.0` is published as a GitHub prerelease with a mature Agentic Workspace memory validator and ten implemented but uncalibrated generic capabilities. The release includes verified core and example-provider wheels and source distributions plus a SHA-256 record. Exact-artifact acceptance passed in a clean environment, and the Node 24 CI matrix is green. The generic capabilities remain intentionally absent from bootstrap publication until their gates have human-reviewed evidence.
 
 ## Implemented and Verified
 
@@ -25,8 +25,8 @@ Tiny Minds `0.2.0` is a portable developer preview with a mature Agentic Workspa
 
 - Tiny Minds: 63 normal tests passed, 2 sterile tests skipped by default.
 - Sterile acceptance: 2/2 passed when explicitly enabled.
-- Hosted CI: all six Windows, Ubuntu, and macOS jobs passed at commit `07d03b0`; every job ran both the normal and sterile suites.
-- Provisional release build: core and example-provider wheels and source distributions built successfully, SHA-256 records generated, and the exact wheels passed a local no-network install, import, doctor, provider-discovery, and capability-discovery smoke test.
+- Hosted CI: all six Windows, Ubuntu, and macOS jobs passed at release commit `a7c3513`; every job ran both the normal and sterile suites.
+- Published release: [`v0.2.0`](https://github.com/Zyle0001/Tiny-Minds/releases/tag/v0.2.0) is a GitHub prerelease published from an annotated tag with five uploaded assets; independently downloaded archives matched the published `SHA256SUMS.txt` record.
 - Clean artifact acceptance: the exact core and example-provider wheels installed as `0.2.0` under Python 3.13 with no NumPy, `psutil`, Foundry, or workspace coupling; doctor, discovery, deterministic execution, provider-absence degradation, and live external-provider execution all passed.
 - CI actions: `actions/checkout@v7` and `actions/setup-python@v7`, both on Node 24, with the workflow token restricted to `contents: read`.
 - Foundry Local Runtime: 5/5 tests passed.
@@ -44,8 +44,9 @@ The seed fixtures are synthetic and are not a substitute for the plan's human-re
 
 ## Immediate Next Steps
 
-1. Tag `v0.2.0` and publish the verified artifacts through a GitHub Release. PyPI publication is optional for this preview.
-2. Begin the deterministic Phase 1 gate defined in [`docs/phase-1-requirements.md`](docs/phase-1-requirements.md).
+1. Begin the deterministic Phase 1 gate defined in [`docs/phase-1-requirements.md`](docs/phase-1-requirements.md).
+2. Modernize the core `project.license` declaration before setuptools ends support for the legacy table form in February 2027.
+3. Decide separately whether this developer preview should also be published to PyPI.
 
 ## Phase 1 Summary
 
